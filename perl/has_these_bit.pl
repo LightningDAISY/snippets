@@ -6,7 +6,7 @@ use feature qw{ say };
 sub aHasB
 {
     my($numberA, $numberB) = @_;
-    return if $numberA < $numberB;
+    return 0 if $numberA < $numberB;
     my $ored = $numberA | $numberB;
     $ored == $numberA ? 1 : 0
 }
