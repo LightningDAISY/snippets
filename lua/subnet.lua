@@ -53,7 +53,7 @@ local function fread(path)
 end
 
 local function splitAddress(address)
-  itr = rex.split(address, isAddress)
+  local itr = rex.split(address, isAddress)
   local decs = {}
   for dec in itr do
     table.insert(decs, dec)
