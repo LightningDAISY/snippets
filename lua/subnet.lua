@@ -46,10 +46,10 @@ isAddress:jit_compile()
 bySlash:jit_compile()
 
 local function fread(path)
-    local fp = assert(io.open(path, "r"))
-    local fbody = fp:read("*all")
-    fp:close()
-    return fbody
+  local fp = assert(io.open(path, "r"))
+  local fbody = fp:read("*all")
+  fp:close()
+  return fbody
 end
 
 local function splitAddress(address)
