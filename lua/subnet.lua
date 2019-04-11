@@ -1,54 +1,49 @@
 local M = {}
-local rex = require("rex_pcre2")
+local rex   = require "rex_pcre2"
+local bit32 = require "bit32"
 local errorMessage = ""
 
-local maskData = {
-  1, -- (32 - 31 = ) 1
-  3, -- 2
-  7, -- 3
-  15, -- 4
-  31, -- 5
-  63, -- 6
-  127, -- 7
-  255, -- 8
-  511, -- 9
-  1023, -- 10
-  2047, -- 11
-  4095, -- 12
-  8191, -- 13
-  16383, -- 14
-  32767, -- 15
-  65535, -- 16
-  131071, -- 17
-  262143, -- 18
-  524287, -- 19
-  1048575, -- 20
-  2097151, -- 21
-  4194303, -- 22
-  8388607, -- 23
-  16777215, -- 24
-  33554431, -- 25
-  67108863, -- 26
-  134217727, -- 27
-  268435455, -- 28
-  536870911, -- 29
-  1073741823, -- 30
-  2147483647, -- 31
-  4294967295, -- 32
+local l2a = {
+  "128.0.0.0", -- 1
+  "192.0.0.0", -- 2
+  "224.0.0.0", -- 3
+  "240.0.0.0", -- 4
+  "248.0.0.0", -- 5
+  "252.0.0.0", -- 6
+  "254.0.0.0", -- 7
+  "255.0.0.0", -- 8
+  "255.128.0.0", -- 9
+  "255.192.0.0", -- 10
+  "255.224.0.0", -- 11
+  "255.240.0.0", -- 12
+  "255.248.0.0", -- 13
+  "255.252.0.0", -- 14
+  "255.254.0.0", -- 15
+  "255.255.0.0", -- 16
+  "255.255.128.0", -- 17
+  "255.255.192.0", -- 18
+  "255.255.224.0", -- 19
+  "255.255.240.0", -- 20
+  "255.255.248.0", -- 21
+  "255.255.252.0", -- 22
+  "255.255.254.0", -- 23
+  "255.255.255.0", -- 24
+  "255.255.255.128", -- 25
+  "255.255.255.192", -- 26
+  "255.255.255.224", -- 27
+  "255.255.255.240", -- 28
+  "255.255.255.248", -- 29
+  "255.255.255.252", -- 30
+  "255.255.255.254", -- 31
+  "255.255.255.255",  --32
 }
 
--- 32 - hex2value["x" .. h]
-local hex2value = {
-  x255 = 0,
-  x254 = 1,
-  x252 = 2,
-  x248 = 3,
-  x240 = 4,
-  x224 = 5,
-  x192 = 6,
-  x128 = 7,
-  x0   = 8,
-}
+local isConfigure = rex.new("(\\d+\\.[^\\s;]+)")
+local isAddress = rex.new("\\.")
+local bySlash = rex.new("/")
+isConfigure:jit_compile()
+isAddress:jit_compile()
+bySlash:jit_compile()
 
 local function fread(path)
     local fp = assert(io.open(path, "r"))
@@ -58,7 +53,7 @@ local function fread(path)
 end
 
 local function splitAddress(address)
-  itr = rex.split(address, "\\.")
+  itr = rex.split(address, isAddress)
   local decs = {}
   for dec in itr do
     table.insert(decs, dec)
@@ -66,39 +61,16 @@ local function splitAddress(address)
   return decs
 end
 
-local function address2decimal(address)
-  local decs = splitAddress(address)
-  return decs[4] +
-         decs[3] * 256 +
-         decs[2] * 65536 +
-         decs[1] * 16777216
-end
-
-local function decimalRangeOfMask(networkAddress,netmaskLength)
-  if netmaskLength + 0 >= 32 then
-      errorMessage = "invalid netmask-length"
-      return
+local function getSubnetAddress(adr, mask)
+  if not mask then return adr end
+  local addressColumns = splitAddress(adr)
+  local maskColumns    = splitAddress(mask)
+  local subnetColumns  = {}
+  for i = 1, 4, 1 do
+    table.insert(subnetColumns, bit32.band(addressColumns[i], maskColumns[i]))
   end
-  local decimalAddress = address2decimal(networkAddress)
-  local flip = 32 - netmaskLength
-  local min = decimalAddress + 1
-  local max = decimalAddress + maskData[flip]
-  return { min = min, max = max }
+  return table.concat(subnetColumns, ".")
 end
-
-local function address2length(address)
-  local decs = splitAddress(address)
-  local value = 0
-  local len = 32
-  for i = 4, 1, -1 do
-    value = hex2value["x" .. decs[i]]
-    if not value then return end
-    if value <= 0 then return len end
-    len = len - value
-  end
-  return len
-end
-
 --
 -- ex.
 --     if isSubnetMember("111.7.80.66", "111.7.80.64/27") then
@@ -106,26 +78,16 @@ end
 --     end
 --
 local function isSubnetMember(adr, subnet)
-  local itr = rex.split(subnet, "/", 2)
+  local itr = rex.split(subnet, bySlash)
   local subnetAddress = itr()
   local mask = itr()
-  
-
-  local decSubnetAddress = address2decimal(subnetAddress)
-  local minOfMask = decSubnetAddress
-  local maxOfMask = decSubnetAddress
   if mask then
-    if rex.match(mask, "^\\d+\\.") then
-      mask = address2length(mask)
+    if not rex.match(mask, isAddress) then
+      mask = l2a[mask + 0]
+      if not mask then return end
     end
-    local range = decimalRangeOfMask(subnetAddress,mask)
-    if not range then return end
-    minOfMask = range.min
-    maxOfMask = range.max
   end
-
-  local decAddress = address2decimal(adr)
-  if decAddress >= minOfMask and decAddress <= maxOfMask then return true end
+  if subnetAddress == getSubnetAddress(adr, mask) then return true end
   return false
 end
 
@@ -133,16 +95,12 @@ end
 -- allows.conf example
 --
 --   122.22.4.0/24
---   210.34.92.5
---   127.0.0.0/8
+--   210.34.92.5/255.255.252.0
+--   127.0.0.1
 --
 function M.isAllowed(sourceAddress, filePath)
   local fbody = fread(filePath)
-  local r = rex.new("(\\d+\\.[^\\s;]+)")
-  if not r then print("new error"); return false end
-  r:jit_compile()
-  -- for subnet in rex.gmatch(fbody, "(\\d+\\.[^\\s;]+)") do
-  for subnet in rex.gmatch(fbody, r) do
+  for subnet in rex.gmatch(fbody, isConfigure) do
     if isSubnetMember(sourceAddress, subnet) then
       return true
     end
@@ -156,31 +114,4 @@ function M.new(o)
 end
 
 return M
-
---[[
-
-Example
-
-	local subnet = require "subnet"
-	local isAllowed = subnet.isAllowed(
-      "192.168.0.2",
-      "/path/to/allows.conf"
-    )
-	if isAllowed then
-		print("is allowed.")
-	else
-		print("is NOT allowed.")
-	end
-
-Example allows.conf
-
-    # localhost
-    allow 127.0.0.1;
-
-    # Private Network Address: Class C
-    allow 192.168.0.0/24;
-
-    ...
-
-]]--
 
