@@ -109,8 +109,8 @@ function M.isAllowed(sourceAddress, filePath)
 end
 
 function M.new(o)
-	o = o or {}
-	return o
+  o = o or {}
+  return o
 end
 
 return M
